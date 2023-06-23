@@ -1,0 +1,53 @@
+kind: CronJob
+apiVersion: batch/v1
+metadata:
+  name: delete-jobs
+  namespace: ansible-automation-platform
+spec:
+  schedule: 0 0 * * *
+  concurrencyPolicy: Allow
+  suspend: false
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+    spec:
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          volumes:
+            - name: delete-jobs-volume
+              configMap:
+                name: delete-jobs-configmap
+                defaultMode: 420
+          containers:
+            - resources: {}
+              terminationMessagePath: /dev/termination-log
+              name: delete-jobs-container
+              command:
+                - bash
+                - '-c'
+                - |
+                  pip install --target=/tmp/requests requests &&
+                  python /delete-jobs/delete_jobs_awx.py
+              env:
+                - name: TOWER_URL
+                  value: >-
+                    XXXXXXXXXXXXXXXXXXXXXXXXX
+                - name: TOWER_USER
+                  value: XXXXXXXXXX
+                - name: TOWER_PASSWORD
+                  value: XXXXXXXXXX
+              imagePullPolicy: IfNotPresent
+              volumeMounts:
+                - name: delete-jobs-volume
+                  mountPath: /delete-jobs
+              terminationMessagePolicy: File
+              image: 'python:3.10'
+          restartPolicy: OnFailure
+          terminationGracePeriodSeconds: 30
+          dnsPolicy: ClusterFirst
+          securityContext: {}
+          schedulerName: default-scheduler
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
