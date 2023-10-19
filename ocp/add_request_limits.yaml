@@ -1,0 +1,94 @@
+---
+- name: Add resource on all deployment or DeploymentConfig
+  hosts: localhost
+  gather_facts: false
+  vars_prompt:
+    - name: ocp_api_url
+      prompt: "Your openshift cluster api url"
+      private: no
+    - name: username
+      prompt: "Your username"
+      private: yes
+    - name: password
+      prompt: "Your password"
+      private: no  
+  tasks:
+    - name: Authenticate with OpenShift
+      community.kubernetes.k8s_auth:
+        host: "{{ ocp_api_url }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        validate_certs: no
+      register: auth_result
+      
+    - name: Get the list of namespaces
+      command: oc get project | egrep -v "^openshift|^kube" | grep 'dev' | awk '{print $1}'
+      register: namespaces_raw
+
+    - name: Parsing the list of namespaces
+      set_fact:
+        namespaces: "{{ namespaces_raw.stdout_lines }}"
+
+    - name: Check the existence of Deployment
+      community.kubernetes.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ item }}"
+      loop: "{{ namespaces }}"
+      register: deployment_check
+
+    - name: Check the existence of DeploymentConfig
+      community.kubernetes.k8s_info:
+        api_version: apps.openshift.io/v1
+        kind: DeploymentConfig
+        namespace: "{{ item }}"
+      loop: "{{ namespaces }}"
+      register: deploymentconfig_check
+
+    - name: Add resources to Deployment
+      community.kubernetes.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            namespace: "{{ item }}"
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: placeholder
+                    resources:
+                      requests:
+                        memory: "256Mi"
+                        cpu: "100m"
+                      limits:
+                        memory: "512Mi"
+                        cpu: "500m"
+          field_manager: ansible
+      loop: "{{ deployment_check.results }}"
+      when: namespaces is defined and namespaces | length > 0 and not item.failed
+
+    - name: Add resources to DeploymentConfig
+      community.kubernetes.k8s:
+        state: present
+        definition:
+          apiVersion: apps.openshift.io/v1
+          kind: DeploymentConfig
+          metadata:
+            namespace: "{{ item }}"
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: placeholder
+                    resources:
+                      requests:
+                        memory: "256Mi"
+                        cpu: "100m"
+                      limits:
+                        memory: "512Mi"
+                        cpu: "500m"
+          field_manager: ansible
+      loop: "{{ deploymentconfig_check.results }}"
+      when: namespaces is defined and namespaces | length > 0 and not item.failed
